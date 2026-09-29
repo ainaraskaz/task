@@ -1,4 +1,5 @@
 #include "task.h"
+#include <cjson/cJSON.h>
 #include <curl/curl.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -18,6 +19,8 @@ struct memory {
   size_t size;
 };
 
+char country[47];
+
 static size_t cb(char *data, size_t size, size_t nmemb, void *clientp) {
   size_t realsize = nmemb;
   struct memory *mem = (struct memory *)clientp;
@@ -33,16 +36,54 @@ static size_t cb(char *data, size_t size, size_t nmemb, void *clientp) {
 
   return realsize;
 }
+char *concat(const char *s1, const char *s2) {
+  char *result = malloc(strlen(s1) + strlen(s2) + 1);
+  if (result == NULL) {
+    perror("malloc");
+    exit(EXIT_FAILURE);
+  }
+  strcpy(result, s1);
+  strcat(result, s2);
+  return result;
+}
+void get_current_location() {
+  CURL *curl;
+  struct memory chunk = {0};
+  CURLcode result;
+
+  curl = curl_easy_init();
+  if (curl) {
+    curl_easy_setopt(curl, CURLOPT_URL, "http://ip-api.com/json/\?fields=1");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
+    result = curl_easy_perform(curl);
+    /* Check for errors */
+    if (result == CURLE_OK && chunk.response != NULL) {
+      cJSON *root = cJSON_Parse(chunk.response);
+      if (root != NULL) {
+        // Get "country" key directly from root object
+        cJSON *country_item = cJSON_GetObjectItemCaseSensitive(root, "country");
+
+        if (cJSON_IsString(country_item) &&
+            (country_item->valuestring != NULL)) {
+          // Safely copy string into your destination buffer
+          snprintf(country, sizeof(country), "%s", country_item->valuestring);
+        }
+        cJSON_Delete(root); // Always clean up
+      }
+    } else {
+      fprintf(stderr, "curl_easy_perform() failed: %s\n",
+              curl_easy_strerror(result));
+    }
+    curl_easy_cleanup(curl);
+  }
+}
 void download_test(char *url) {
   if (url == NULL) {
     url = DOWNLOAD_TEST_URL;
   }
   CURL *curl;
   CURLcode result;
-  result = curl_global_init(CURL_GLOBAL_ALL);
-  if (result != CURLE_OK)
-    exit(EXIT_FAILURE);
-
   /* init the curl session */
   curl = curl_easy_init();
   if (curl) {
@@ -63,25 +104,15 @@ void download_test(char *url) {
 
     if (result == CURLE_OK) {
       curl_off_t val;
-
-      /* check for bytes downloaded */
-      result = curl_easy_getinfo(curl, CURLINFO_SIZE_DOWNLOAD_T, &val);
-      if ((result == CURLE_OK) && (val > 0)) {
-        long mb = (val / 1024) / 1024;
-        printf("\nData downloaded: %ld mbytes.\n", mb);
-      }
-      /* check for total download time */
-      result = curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME_T, &val);
-      if ((result == CURLE_OK) && (val > 0))
-        printf("Total download time: %" CURL_FORMAT_CURL_OFF_T
-               ".%06" CURL_FORMAT_CURL_OFF_T " sec.\n",
-               val / 1000000, val % 1000000);
-
       /* check for average download speed */
       result = curl_easy_getinfo(curl, CURLINFO_SPEED_DOWNLOAD_T, &val);
       if ((result == CURLE_OK) && (val > 0)) {
-        long speed_mbs = (val / 1024) / 1024;
-        printf("Average download speed: %ld mbyte/sec.\n", speed_mbs);
+        double speed_mbs = ((double)val * 8.0) / (1024.0 * 1024.0);
+        printf("\nDownload speed: %f mb/s\n"
+               "Upload speed: - mb/s\n"
+               "Server name: %s\n"
+               "Location of the user: %s\n",
+               speed_mbs, url, country);
       }
     } else {
       fprintf(stderr, "Error while fetching '%s' : %s\n", url,
@@ -91,9 +122,6 @@ void download_test(char *url) {
     /* cleanup curl stuff */
     curl_easy_cleanup(curl);
   }
-
-  /* we are done with libcurl, so clean it up */
-  curl_global_cleanup();
 }
 void upload_test(char *url) {
   if (url == NULL) {
@@ -105,24 +133,22 @@ void upload_test(char *url) {
   curl_off_t speed_upload, total_time;
   FILE *fd;
 
-  result = curl_global_init(CURL_GLOBAL_ALL);
-  if (result != CURLE_OK)
-    exit(EXIT_FAILURE);
-
   fd = fopen(UPLOAD_TEST_FILE, "rb");
   if (!fd) {
-    curl_global_cleanup();
     exit(EXIT_FAILURE);
   }
 
   /* to get the file size */
   if (fstat(fileno(fd), &file_info)) {
     fclose(fd);
-    curl_global_cleanup();
     exit(EXIT_FAILURE);
   }
 
   curl = curl_easy_init();
+  if (!curl) {
+    perror("curl_easy_init");
+    exit(EXIT_FAILURE);
+  }
   if (curl) {
     /* upload to this place */
     curl_easy_setopt(curl, CURLOPT_URL, url);
@@ -148,57 +174,127 @@ void upload_test(char *url) {
       /* now extract transfer info */
       curl_easy_getinfo(curl, CURLINFO_SPEED_UPLOAD_T, &speed_upload);
       curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME_T, &total_time);
-      long speed_mbs = (speed_upload / 1024) / 1024;
-
-      printf("\nSpeed: %ld mbytes/sec during "
+      double speed_mbs = ((double)speed_upload * 8.0) / (1024.0 * 1024.0);
+      /*printf("\nSpeed: %ld mbytes/sec during "
              "%" CURL_FORMAT_CURL_OFF_T ".%06" CURL_FORMAT_CURL_OFF_T
              " seconds\n",
-             speed_mbs, total_time / 1000000, total_time % 1000000);
+             speed_mbs, total_time / 1000000, total_time % 1000000);*/
+      printf("\nDownload speed: - mb/s\n"
+             "Upload speed: %f mb/s\n"
+             "Server name: %s\n"
+             "Location of the user: %s\n",
+             speed_mbs, url, country);
     }
     /* always cleanup */
     curl_easy_cleanup(curl);
   }
   fclose(fd);
-  curl_global_cleanup();
 }
-char *get_current_location() {
-  CURL *curl;
-  struct memory chunk = {0};
-  CURLcode result = curl_global_init(CURL_GLOBAL_ALL);
-  char *country = malloc(47);
-  if (result != CURLE_OK)
+void best_server_by_location(char *location) {
+  if (location == NULL) {
+    location = country;
+  }
+  FILE *fp = fopen(JSON_FILE, "r");
+  if (fp == NULL) {
+    perror("fopen");
     exit(EXIT_FAILURE);
+  }
 
-  curl = curl_easy_init();
-  if (curl) {
-    curl_easy_setopt(curl, CURLOPT_URL, "http://ip-api.com/json/\?fields=1");
-    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, cb);
-    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&chunk);
-    result = curl_easy_perform(curl);
-    /* Check for errors */
-    if (result != CURLE_OK) {
-      fprintf(stderr, "curl_easy_perform() failed: %s\n",
-              curl_easy_strerror(result));
-    } else {
-      printf("%s\n", chunk.response);
-      int count = 0;
-      int j = 0;
-      // extract the country name :P
-      for (ulong i = 0; i < strlen(chunk.response); i++) {
-        if (chunk.response[i] == '"') {
-          count++;
-          continue;
-        }
-        if (count == 3) {
-          country[j] = chunk.response[i];
-          j++;
+  fseek(fp, 0, SEEK_END);
+  size_t file_size = ftell(fp);
+  fseek(fp, 0, SEEK_SET);
+
+  char *buffer = (char *)malloc(file_size + 1);
+
+  if (buffer == NULL) {
+    perror("malloc");
+    fclose(fp);
+    exit(EXIT_FAILURE);
+  }
+  if (fread(buffer, 1, file_size, fp) == 0) {
+    perror("fread");
+    free(buffer);
+    exit(EXIT_FAILURE);
+  }
+  buffer[file_size] = '\0';
+  fclose(fp);
+  cJSON *root = cJSON_Parse(buffer);
+  free(buffer);
+  if (root == NULL) {
+    const char *error_ptr = cJSON_GetErrorPtr();
+    if (error_ptr != NULL) {
+      fprintf(stderr, "Error before: %s\n", error_ptr);
+    }
+    exit(EXIT_FAILURE);
+  }
+  if (!cJSON_IsArray(root)) {
+    fprintf(stderr, "Expected a JSON array\n");
+    cJSON_Delete(root);
+    exit(EXIT_FAILURE);
+  }
+  cJSON *item = NULL;
+  double best_time = 1000000000000000000;
+  int best_id = -1;
+  char *best_city = NULL;
+  char *best_provider = NULL;
+  char *best_host = NULL;
+  cJSON_ArrayForEach(item, root) {
+    cJSON *c = cJSON_GetObjectItemCaseSensitive(item, "country");
+    cJSON *city = cJSON_GetObjectItemCaseSensitive(item, "city");
+    cJSON *provider = cJSON_GetObjectItemCaseSensitive(item, "provider");
+    cJSON *host = cJSON_GetObjectItemCaseSensitive(item, "host");
+    cJSON *id = cJSON_GetObjectItemCaseSensitive(item, "id");
+    if (cJSON_IsString(c) && (c->valuestring != NULL) && cJSON_IsString(host) &&
+        (host->valuestring != NULL) && cJSON_IsNumber(id)) {
+      if (strcmp(location, c->valuestring) == 0) {
+        CURL *curl = curl_easy_init();
+        if (curl) {
+          CURLcode result;
+          double total;
+          char *full_url = concat("https://", host->valuestring);
+          curl_easy_setopt(curl, CURLOPT_URL, full_url);
+          curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+          curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
+          result = curl_easy_perform(curl);
+          if (result == CURLE_OK) {
+            result = curl_easy_getinfo(curl, CURLINFO_TOTAL_TIME, &total);
+            if (result == CURLE_OK) {
+              if (total < best_time) {
+                best_time = total;
+                best_id = id->valueint;
+
+                free(best_city);
+                free(best_host);
+                free(best_provider);
+                best_city = (cJSON_IsString(city) && city->valuestring)
+                                ? strdup(city->valuestring)
+                                : NULL;
+                best_host = strdup(host->valuestring);
+                best_provider =
+                    (cJSON_IsString(provider) && provider->valuestring)
+                        ? strdup(provider->valuestring)
+                        : NULL;
+              }
+            }
+          }
+          free(full_url);
+          curl_easy_cleanup(curl);
         }
       }
-      country[j] = '\0';
-      printf("%s\n", country);
     }
-    curl_easy_cleanup(curl);
   }
-  curl_global_cleanup();
-  return country;
+  if (best_host != NULL) {
+    printf("--- Best Server Match ---\n");
+    printf("ID:       %d\n", best_id);
+    printf("Host:     %s\n", best_host);
+    printf("City:     %s\n", best_city);
+    printf("Provider: %s\n", best_provider);
+    printf("Latency:  %.3f s\n", best_time);
+  } else {
+    printf("No matching servers found for location: %s\n", location);
+  }
+  free(best_city);
+  free(best_host);
+  free(best_provider);
+  cJSON_Delete(root);
 }

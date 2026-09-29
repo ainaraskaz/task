@@ -31,11 +31,11 @@ char *read_file(char *filename) {
 }
 cJSON *parse_json(char *filename) {
   char *buf = read_file(filename);
-  cJSON *json = cJSON_Parse(buf);
-  if (json == NULL) {
+  cJSON *root = cJSON_Parse(buf);
+  if (root == NULL) {
     perror("cJSON_Parse");
     exit(EXIT_FAILURE);
   }
   free(buf);
-  return json;
+  return root;
 }

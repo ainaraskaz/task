@@ -15,8 +15,12 @@
 #define URL_20M "file_20M.bin"
 #define URL_50M "file_50M.bin"
 #define URL_100M "file_100M.bin"
-char *concat(const char *s1, const char *s2);
 int main(int argc, char *argv[]) {
+  CURLcode res = curl_global_init(CURL_GLOBAL_ALL);
+  if (res != CURLE_OK) {
+    fprintf(stderr, "curl_global_init() failed: %s\n", curl_easy_strerror(res));
+    return EXIT_FAILURE;
+  }
   int opt;
   int u = 0, d = 0;
   char *url;
@@ -41,22 +45,14 @@ int main(int argc, char *argv[]) {
       exit(EXIT_FAILURE);
     }
   }
+  get_current_location();
   if (d) {
     download_test(NULL);
   }
   if (u) {
     upload_test(NULL);
   }
-  char *loc = get_current_location();
+  best_server_by_location(NULL);
+  curl_global_cleanup();
   return 0;
-}
-char *concat(const char *s1, const char *s2) {
-  char *result = malloc(strlen(s1) + strlen(s2) + 1);
-  if (result == NULL) {
-    perror("malloc");
-    exit(EXIT_FAILURE);
-  }
-  strcpy(result, s1);
-  strcat(result, s2);
-  return result;
 }
