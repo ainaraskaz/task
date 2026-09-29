@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -Iinclude -g
+CFLAGS = -Wall -Wextra -Iinclude -g -Wunused-result
 LDFLAGS = -lcurl -lcjson
 
 SRCDIR = src
