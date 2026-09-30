@@ -6,8 +6,8 @@ Apskaičiuokite ir įvertinkite tinklo greitį tiesiai iš komandinės eilutės!
 
 * **Automatinė geolokacija**: Automatiškai nustato esamą tinklo vietovę.
 * **Optimaliausio serverio paieška**: Randa geriausią matavimo serverį pagal esamą arba rankiniu būdu nurodytą vietovę.
-* **Atsiuntimo (Download) sparta**: Galimybė matuoti atsisiuntimo greitį naudojant standartinius arba pasirinktus testinius failus.
-* **Išsiuntimo (Upload) sparta**: Galimybė matuoti išsiuntimo greitį naudojant `Ookla` arba kitus HTTP/HTTPS serverius.
+* **Atsiuntimo (Download) sparta**: Galimybė matuoti atsiuntimo greitį naudojant `Ookla`.
+* **Išsiuntimo (Upload) sparta**: Galimybė matuoti išsiuntimo greitį naudojant `Ookla`.
 * **Pilnas automatinis testas**: Galimybė atlikti visą matavimo ciklą (serverio paiešką, išsiuntimą ir atsiuntimą) vienu komandos paleidimu.
 
 ## 🧰 Reikalavimai ir bibliotekos
