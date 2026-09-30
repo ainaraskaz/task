@@ -3,11 +3,24 @@
 #include <curl/curl.h>
 #include <fcntl.h>
 #include <float.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <uuid/uuid.h>
+#include <unistd.h>
+
+#define UPLOAD_BUF_SIZE (25 * 1024 * 1024)
+struct memory {
+  char *response;
+  size_t size;
+};
+struct MemoryUpload {
+  const char *data;
+  size_t bytes_left;
+};
+char country[47];
+SpeedTestUrls urls;
 
 static size_t write_cb(char *ptr, size_t size, size_t nmemb, void *data) {
   /* we are not interested in the downloaded bytes itself,
@@ -29,13 +42,7 @@ static size_t read_callback(char *ptr, size_t size, size_t nmemb,
 
   return retcode;
 }
-struct memory {
-  char *response;
-  size_t size;
-};
 
-char country[47];
-SpeedTestUrls urls;
 static size_t cb(char *data, size_t size, size_t nmemb, void *clientp) {
   size_t realsize = nmemb;
   struct memory *mem = (struct memory *)clientp;
@@ -93,14 +100,41 @@ void get_current_location() {
     curl_easy_cleanup(curl);
   }
 }
-char *gen_uuid() {
-  uuid_t binuuid;
-  uuid_generate_random(binuuid);
+char *gen_uuid(void) {
+  uint8_t bytes[16];
 
+  // Read 16 random bytes from /dev/urandom
+  int fd = open("/dev/urandom", O_RDONLY);
+  if (fd < 0) {
+    return NULL; // Handle file open failure
+  }
+
+  if (read(fd, bytes, sizeof(bytes)) != sizeof(bytes)) {
+    close(fd);
+    return NULL; // Handle read failure
+  }
+  close(fd);
+
+  // Set Version to 4 (UUIDv4) -> upper 4 bits of byte 6 = 0100
+  bytes[6] = (bytes[6] & 0x0F) | 0x40;
+
+  // Set Variant to RFC 4122 -> upper 2 bits of byte 8 = 10
+  bytes[8] = (bytes[8] & 0x3F) | 0x80;
+
+  // Allocate memory for 36 hex chars/hyphens + 1 null terminator
   char *uuid = malloc(37);
+  if (!uuid) {
+    return NULL;
+  }
 
-  uuid_unparse_lower(binuuid, uuid);
-  uuid_unparse(binuuid, uuid);
+  // Format as 8-4-4-4-12 string
+  snprintf(
+      uuid, 37,
+      "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+      bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
+      bytes[7], bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13],
+      bytes[14], bytes[15]);
+
   return uuid;
 }
 int build_download_url(char *buffer, size_t buf_size, const char *host,
@@ -108,18 +142,40 @@ int build_download_url(char *buffer, size_t buf_size, const char *host,
   char *cache_uuid = gen_uuid();
   char *guid = gen_uuid();
 
-  return snprintf(buffer, buf_size,
-                  "https://%s/download?nocache=%s&size=%ld&guid=%s", host,
-                  cache_uuid, size, guid);
+  if (!cache_uuid || !guid) {
+    free(cache_uuid);
+    free(guid);
+    return -1;
+  }
+
+  int res = snprintf(buffer, buf_size,
+                     "https://%s/download?nocache=%s&size=%ld&guid=%s", host,
+                     cache_uuid, size, guid);
+
+  free(cache_uuid);
+  free(guid);
+
+  return res;
 }
 int build_upload_url(char *buffer, size_t buf_size, const char *host) {
   char *cache_uuid = gen_uuid();
   char *guid = gen_uuid();
 
-  return snprintf(buffer, buf_size,
-                  "https://%s/"
-                  "upload?nocache=%s&guid=%s",
-                  host, cache_uuid, guid);
+  if (!cache_uuid || !guid) {
+    free(cache_uuid);
+    free(guid);
+    return -1;
+  }
+
+  int res = snprintf(buffer, buf_size,
+                     "https://%s/"
+                     "upload?nocache=%s&guid=%s",
+                     host, cache_uuid, guid);
+
+  free(cache_uuid);
+  free(guid);
+
+  return res;
 }
 SpeedTestUrls best_server_by_location(char *location) {
   if (location == NULL) {
@@ -189,7 +245,7 @@ SpeedTestUrls best_server_by_location(char *location) {
           double total;
           char *full_url = concat("https://", host->valuestring);
           curl_easy_setopt(curl, CURLOPT_URL, full_url);
-          curl_easy_setopt(curl, CURLOPT_TIMEOUT, 5L);
+          curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
           curl_easy_setopt(curl, CURLOPT_NOBODY, 1L);
           result = curl_easy_perform(curl);
           if (result == CURLE_OK) {
@@ -243,11 +299,14 @@ SpeedTestUrls best_server_by_location(char *location) {
 }
 
 void download_test(char *url, char *host) {
-  if (url == NULL) {
+  char url_buf[512];
+  if (url == NULL && host == NULL) {
     url = DOWNLOAD_TEST_URL;
-  }
-  if (host == NULL) {
     host = DOWNLOAD_TEST_URL;
+  }
+  if (url == NULL) {
+    build_download_url(url_buf, sizeof(url_buf), host, 25000000);
+    url = url_buf;
   }
   CURL *curl;
   CURLcode result;
@@ -354,6 +413,11 @@ void upload_test(char *url) {
   fclose(fd);
 }
 void upload_test_ookla(char *url, char *host) {
+  char url_buf[512];
+  if (url == NULL) {
+    build_upload_url(url_buf, sizeof(url_buf), host);
+    url = url_buf;
+  }
   FILE *fd;
   struct stat file_info;
   CURL *curl = curl_easy_init();
@@ -362,7 +426,6 @@ void upload_test_ookla(char *url, char *host) {
   if (!fd) {
     exit(EXIT_FAILURE);
   }
-
   /* to get the file size */
   if (fstat(fileno(fd), &file_info)) {
     fclose(fd);
@@ -371,18 +434,15 @@ void upload_test_ookla(char *url, char *host) {
   if (curl) {
     CURLcode result;
     struct curl_slist *headers = NULL;
-    headers =
-        curl_slist_append(headers, "Content-Type: application/octet-stream");
-    headers = curl_slist_append(headers, "Expect:");
     curl_easy_setopt(curl, CURLOPT_URL, url);
     curl_easy_setopt(curl, CURLOPT_POST, 1L);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-    curl_easy_setopt(curl, CURLOPT_READFUNCTION, read_callback);
     curl_easy_setopt(curl, CURLOPT_READDATA, fd);
+    curl_easy_setopt(curl, CURLOPT_READFUNCTION, read_callback);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 15L);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE_LARGE,
                      (curl_off_t)file_info.st_size);
-
+    curl_easy_setopt(curl, CURLOPT_USERAGENT, "libcurl-speedchecker/1.0");
     result = curl_easy_perform(curl);
     if (result != CURLE_OK) {
       fprintf(stderr, "curl_easy_perform() failed: %s\n",
@@ -399,7 +459,8 @@ void upload_test_ookla(char *url, char *host) {
              "Server name: %s\n"
              "Location of the user: %s\n",
              speed_mbs, host, country);
-      printf("Uploaded %" CURL_FORMAT_CURL_OFF_T " bytes\n", size);
+
+      printf("Uploaded %" CURL_FORMAT_CURL_OFF_T " bytess\n", size);
     }
     curl_easy_cleanup(curl);
   }

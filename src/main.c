@@ -19,11 +19,6 @@ int main(int argc, char *argv[]) {
   while ((opt = getopt(argc, argv, "U:D:L:dual")) != -1) {
     switch (opt) {
     case 'U':
-      if ((strncmp(optarg, "https://", 8) != 0) &&
-          (strncmp(optarg, "http://", 7) != 0)) {
-        printf("Please provide full link to the speed test.\n");
-        exit(EXIT_FAILURE);
-      }
       upload_url = optarg;
       U = 1;
       break;
@@ -31,11 +26,6 @@ int main(int argc, char *argv[]) {
       u = 1;
       break;
     case 'D':
-      if ((strncmp(optarg, "https://", 8) != 0) &&
-          (strncmp(optarg, "http://", 7) != 0)) {
-        printf("Please provide full link to the speed test.\n");
-        exit(EXIT_FAILURE);
-      }
       download_url = optarg;
       D = 1;
       break;
@@ -64,13 +54,13 @@ int main(int argc, char *argv[]) {
     download_test(NULL, NULL);
   }
   if (D) {
-    download_test(download_url, download_url);
+    download_test(NULL, download_url);
   }
   if (u) {
     upload_test(NULL);
   }
   if (U) {
-    upload_test(upload_url);
+    upload_test_ookla(NULL, upload_url);
   }
   if (l) {
     best_server_by_location(NULL);
