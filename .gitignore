@@ -9,3 +9,5 @@ devenv.local.yaml
 .pre-commit-config.yaml
 *.nix
 *.yaml
+.clangd
+devenv.lock
