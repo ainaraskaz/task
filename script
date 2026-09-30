@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+# Generate two fresh unique IDs
+MY_NO_CACHE=$(uuidgen)
+MY_GUID=$(uuidgen)
+MY_NO_CACHE2=$(uuidgen)
+MY_GUID2=$(uuidgen)
+UPLOAD_SIZE=25000000
+
+# Run the curl test with the newly generated unique parameters
+# https://speed-mobile.telia.lt:8080/download?nocache=27358623-95bc-4bec-9265-fca765f42421&size=25000000&guid=5e6bac90-3049-45be-81b9-b5581adb2caa
+curl -o /dev/null "https://speed-mobile.telia.lt:8080/download?nocache=${MY_NO_CACHE}&size=25000000&guid=${MY_GUID}"
+dd if=/dev/zero bs=1M count=25 status=none | curl -o /dev/null -w "Upload Speed: %{speed_upload} bytes/sec\n" \
+  --data-binary @- \
+  "https://speed-mobile.telia.lt:8080/upload?nocache=${MY_NO_CACHE2}&guid=${MY_GUID2}"

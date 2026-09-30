@@ -1,4 +1,3 @@
-#include "inout.h"
 #include "task.h"
 #include <cjson/cJSON.h>
 #include <curl/curl.h>
@@ -6,15 +5,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#define JSON_FILENAME "data/speedtest_server_list.json"
-#define CHKSPEED_VERSION "1.0"
-#define URL_1M "file_1M.bin"
-#define URL_2M "file_2M.bin"
-#define URL_5M "file_5M.bin"
-#define URL_10M "file_10M.bin"
-#define URL_20M "file_20M.bin"
-#define URL_50M "file_50M.bin"
-#define URL_100M "file_100M.bin"
 int main(int argc, char *argv[]) {
   CURLcode res = curl_global_init(CURL_GLOBAL_ALL);
   if (res != CURLE_OK) {
@@ -22,37 +12,78 @@ int main(int argc, char *argv[]) {
     return EXIT_FAILURE;
   }
   int opt;
-  int u = 0, d = 0;
-  char *url;
-  while ((opt = getopt(argc, argv, "U:D:du")) != -1) {
+  int u = 0, d = 0, D = 0, U = 0, a = 0, l = 0, L = 0;
+  char *download_url = NULL;
+  char *upload_url = NULL;
+  char *location = NULL;
+  while ((opt = getopt(argc, argv, "U:D:L:dual")) != -1) {
     switch (opt) {
     case 'U':
-      url = optarg;
-      u = 1;
-      break;
-    case 'd':
-      d = 1;
+      if ((strncmp(optarg, "https://", 8) != 0) &&
+          (strncmp(optarg, "http://", 7) != 0)) {
+        printf("Please provide full link to the speed test.\n");
+        exit(EXIT_FAILURE);
+      }
+      upload_url = optarg;
+      U = 1;
       break;
     case 'u':
       u = 1;
       break;
     case 'D':
-      url = optarg;
+      if ((strncmp(optarg, "https://", 8) != 0) &&
+          (strncmp(optarg, "http://", 7) != 0)) {
+        printf("Please provide full link to the speed test.\n");
+        exit(EXIT_FAILURE);
+      }
+      download_url = optarg;
+      D = 1;
+      break;
+    case 'd':
       d = 1;
       break;
+    case 'l':
+      l = 1;
+      break;
+    case 'L':
+      location = optarg;
+      L = 1;
+      break;
+    case 'a':
+      a = 1;
+      break;
     default: /* '?' */
-      fprintf(stderr, "Usage: %s [-t nsecs] [-n] name\n", argv[0]);
+      fprintf(stderr,
+              "Usage: %s [-u] [-d] [-a] [-l] [-U url] [-D url] [-L location]\n",
+              argv[0]);
       exit(EXIT_FAILURE);
     }
   }
   get_current_location();
   if (d) {
-    download_test(NULL);
+    download_test(NULL, NULL);
+  }
+  if (D) {
+    download_test(download_url, download_url);
   }
   if (u) {
     upload_test(NULL);
   }
-  best_server_by_location(NULL);
+  if (U) {
+    upload_test(upload_url);
+  }
+  if (l) {
+    best_server_by_location(NULL);
+  }
+  if (L) {
+    best_server_by_location(location);
+  }
+  if (a) {
+    SpeedTestUrls urls;
+    urls = best_server_by_location(location);
+    upload_test_ookla(urls.upload_url, urls.server_name);
+    download_test(urls.download_url, urls.server_name);
+  }
   curl_global_cleanup();
   return 0;
 }
