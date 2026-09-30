@@ -459,8 +459,6 @@ void upload_test_ookla(char *url, char *host) {
              "Server name: %s\n"
              "Location of the user: %s\n",
              speed_mbs, host, country);
-
-      printf("Uploaded %" CURL_FORMAT_CURL_OFF_T " bytess\n", size);
     }
     curl_easy_cleanup(curl);
   }
