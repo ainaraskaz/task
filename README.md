@@ -49,23 +49,23 @@ make
 #### 1. Atlikti pilną automatinį greičio testą:
 
 ```bash
-./speedtest -a
+./build/main -a
 ```
 
 #### 2. Išbandyti atsiuntimo greitį iš konkretaus URL:
 
 ```bash
-./speedtest -D speed-kaunas.telia.lt:8080
+./build/main -D speed-kaunas.telia.lt:8080
 ```
 
 #### 3. Rasti geriausią serverį konkrečiai vietovei:
 
 ```bash
-./speedtest -L Lithuania
+./build/main -L Lithuania
 ```
 
 #### 4. Atlikti tik išsiuntimo ir atsiuntimo testus:
 
 ```bash
-./speedtest -u -d
+./build/main -u -d
 ```
